@@ -33,7 +33,7 @@ func (v Palette) UnmarshalBinary(data []byte) error {
 func main() {
 	inputFile := os.Args[1]
 
-	file, err := os.OpenFile(inputFile, os.O_RDONLY, 0x755)
+	file, err := os.OpenFile(inputFile, os.O_RDONLY, os.FileMode(0755))
 	if err != nil {
 		panic(err)
 	}
@@ -66,6 +66,15 @@ func main() {
 	fmt.Printf("Global color table flag: %v\n", GlobalColorTableFlag)
 	fmt.Printf("Global color table size: %v\n", GlobalColorTableSize)
 	fmt.Printf("global color table entries: %v\n", GlobalColorTableEntries)
+
+	st, err := file.Stat()
+	if err != nil {
+		panic(err)
+	}
+	dirName := strings.Split(st.Name(), ".gif")[0]
+
+	fmt.Printf("%v\n", dirName)
+	os.Mkdir(dirName, os.FileMode(0755))
 
 	var palette Palette
 
@@ -176,7 +185,7 @@ func main() {
 					panic(err)
 				}
 
-				outFile, err := os.OpenFile(fmt.Sprintf("%s-raw.%v", file.Name(), i), os.O_CREATE|os.O_RDWR, 0755)
+				outFile, err := os.OpenFile(fmt.Sprintf("./%s/%s-raw.%v", dirName, st.Name(), i), os.O_CREATE|os.O_RDWR, os.FileMode(0755))
 				if err != nil {
 					panic(err)
 				}
