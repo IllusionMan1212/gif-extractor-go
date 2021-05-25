@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 )
@@ -28,6 +29,10 @@ func (v Palette) UnmarshalBinary(data []byte) error {
 		v[i].Blue = data[i*3+2]
 	}
 	return nil
+}
+
+func deinterlace() {
+	// TODO:
 }
 
 func main() {
@@ -89,11 +94,13 @@ func main() {
 		palette.UnmarshalBinary(globalColorTable)
 	}
 
-	for i := 1; readNextBytes(file) != TRAILER; i++ {
+	counter := 1
+
+	for readNextBytes(file) != TRAILER {
 		nextByte := make([]byte, 1)
 		file.Read(nextByte)
 
-		fmt.Printf("next byte is: 0x%x\n", nextByte[0])
+		// fmt.Printf("next byte is: 0x%x\n", nextByte[0])
 
 		switch nextByte[0] {
 		case EXTENSION_BLOCK:
@@ -101,7 +108,7 @@ func main() {
 				nextSecondByte := make([]byte, 1)
 				file.Read(nextSecondByte)
 
-				fmt.Printf("next second byte is: 0x%x\n", nextSecondByte[0])
+				// fmt.Printf("next second byte is: 0x%x\n", nextSecondByte[0])
 
 				switch nextSecondByte[0] {
 				case PLAINTEXT_BLOCK:
@@ -156,21 +163,42 @@ func main() {
 
 				decompressedFrameSize := uint64(int64(imageDescriptor.Height) * int64(imageDescriptor.Width))
 
-				LocalColorTableFlag := imageDescriptor.Packed & 1
-				InterlaceFlag := (imageDescriptor.Packed & 2) >> 1
-				SortFlag := (imageDescriptor.Packed & 4) >> 2
-				LocalColorTableSize := (imageDescriptor.Packed & 0xE0) >> 5
+				LocalColorTableFlag := (imageDescriptor.Packed & 0x80) >> 7
+				InterlaceFlag := (imageDescriptor.Packed & 0x40) >> 6
+				SortFlag := (imageDescriptor.Packed & 0x20) >> 5
+				LocalColorTableEntries := math.Pow(2, float64((imageDescriptor.Packed&7)+1))
 
-				fmt.Printf("Local Color Table Flag: %v\n", LocalColorTableFlag)
-				fmt.Printf("Interlace Flag: %v\n", InterlaceFlag)
-				fmt.Printf("Sort Flag: %v\n", SortFlag)
-				fmt.Printf("Local Color Table Size: %v\n", LocalColorTableSize)
+				// fmt.Printf("Local Color Table Flag: %v\n", LocalColorTableFlag)
+				// fmt.Printf("Interlace Flag: %v\n", InterlaceFlag)
+				// fmt.Printf("Sort Flag: %v\n", SortFlag)
+				// fmt.Printf("Local Color Table Entries: %v\n", LocalColorTableEntries)
 
-				// TODO: implement deinterlacing
-				// TODO: implement sort flag thingy ???
-				// TODO: implement local color table
+				fmt.Printf("Left Offset: %v\n", imageDescriptor.Left)
+				fmt.Printf("Top Offset: %v\n", imageDescriptor.Top)
+
 				// TODO: use color tables for correct colors on pixels
 				// TODO: write the image data to PNG
+
+				// local color table comes first
+				var LocalColorTable Palette
+				if LocalColorTableFlag == 1 {
+					tempLocalColorTable := make([]byte, int(LocalColorTableEntries*3))
+					file.Read(tempLocalColorTable)
+
+					LocalColorTable = make(Palette, int(LocalColorTableEntries))
+					LocalColorTable.UnmarshalBinary(tempLocalColorTable)
+
+					// TODO: use local color table
+				}
+
+				if InterlaceFlag == 1 {
+					// TODO: implement deinterlacing
+					deinterlace()
+				}
+
+				if SortFlag == 1 {
+					// TODO: implement sort flag thingy ???
+				}
 
 				LZWCodeSize := make([]byte, 1)
 				file.Read(LZWCodeSize)
@@ -185,13 +213,14 @@ func main() {
 					panic(err)
 				}
 
-				outFile, err := os.OpenFile(fmt.Sprintf("./%s/%s-raw.%v", dirName, st.Name(), i), os.O_CREATE|os.O_RDWR, os.FileMode(0755))
+				outFile, err := os.OpenFile(fmt.Sprintf("./%s/%s-raw.%v", dirName, st.Name(), counter), os.O_CREATE|os.O_RDWR, os.FileMode(0755))
 				if err != nil {
 					panic(err)
 				}
 
 				outFile.Write(decompressedFrameData)
 
+				counter++
 				break
 			}
 		}

@@ -53,11 +53,11 @@ type Palette []RGB
 
 /*
 ImageDescriptorPacked {
-	0:   LocalColorTableFlag | this flag is set (1) if the image contains a local color table
-	1:   InterlaceFlag       | this flag is set (1) if the image is interlaced
-	2:   SortFlag            | this flag is set (1) if the color table is sorted by importance (frequency of occurrence). only available on 89a
-	3-4: Reserved
-	5-7: LocalColorTableEntrySize
+	0-2:   LocalColorTableEntries | 2 to the power of (this field + 1)
+	3-4:   Reserved
+	5:     SortFlag               | this flag is set (1) if the color table is sorted by importance (frequency of occurrence). only available on 89a
+	6:     InterlaceFlag          | this flag is set (1) if the image is interlaced
+	7:     LocalColorTableFlag    | this flag is set (1) if the image contains a local color table
 }
 */
 
