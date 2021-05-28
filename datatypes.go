@@ -69,6 +69,10 @@ type ImageDescriptor struct {
 	Packed byte   // image and color table data information
 }
 
+/********************/
+/* EXTENSION BLOCKS */
+/********************/
+
 /*
 GraphicsControlPacked {
 	0:   TransparentColorFlag
@@ -77,10 +81,6 @@ GraphicsControlPacked {
 	5-7: Reserved
 }
 */
-
-/********************/
-/* EXTENSION BLOCKS */
-/********************/
 
 // Only available on 89a and comes after the global color table and before the 1st image
 type GraphicsControlBlock struct {

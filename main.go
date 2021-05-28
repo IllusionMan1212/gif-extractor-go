@@ -31,6 +31,18 @@ func (v Palette) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+func (v Palette) MarshalBinary() []byte {
+	data := make([]byte, len(v)*3)
+
+	for i := 0; i < len(v); i++ {
+		data[i*3] = v[i].Red
+		data[i*3+1] = v[i].Green
+		data[i*3+2] = v[i].Blue
+	}
+
+	return data
+}
+
 func deinterlace() {
 	// TODO:
 }
@@ -59,7 +71,7 @@ func main() {
 		fmt.Print("WARNING: some features are unimplemented for this version. Some images may not extract correctly\n\n")
 	}
 	fmt.Printf("GIF aspect ratio is: %v\n", header.AspectRatio)
-	fmt.Printf("GIF background color is: %v\n", header.BackgroundColor)
+	fmt.Printf("GIF background color index is: %v\n", header.BackgroundColor)
 	fmt.Printf("GIF height is: %v\n", header.ScreenHeight)
 	fmt.Printf("GIF width is: %v\n", header.ScreenWidth)
 
@@ -78,20 +90,20 @@ func main() {
 	}
 	dirName := strings.Split(st.Name(), ".gif")[0]
 
-	fmt.Printf("%v\n", dirName)
 	os.Mkdir(dirName, os.FileMode(0755))
 
-	var palette Palette
+	var globalPalette Palette
+	var currentPalette Palette
+	transparencyIndex := -1
 
-	if GlobalColorTableFlag == 0 { // no global color table, use default one (???)
-		// TODO: do we skip it. no idea if this is accurate
-		file.Seek(int64(GlobalColorTableSize), os.SEEK_CUR)
-	} else { // global color table exists, use it
+	if GlobalColorTableFlag == 1 { // global color table exists, use it
 		globalColorTable := make([]byte, GlobalColorTableSize)
 		file.Read(globalColorTable)
 
-		palette = make(Palette, GlobalColorTableEntries)
-		palette.UnmarshalBinary(globalColorTable)
+		globalPalette = make(Palette, GlobalColorTableEntries)
+		globalPalette.UnmarshalBinary(globalColorTable)
+
+		currentPalette = globalPalette
 	}
 
 	counter := 1
@@ -100,15 +112,11 @@ func main() {
 		nextByte := make([]byte, 1)
 		file.Read(nextByte)
 
-		// fmt.Printf("next byte is: 0x%x\n", nextByte[0])
-
 		switch nextByte[0] {
 		case EXTENSION_BLOCK:
 			{
 				nextSecondByte := make([]byte, 1)
 				file.Read(nextSecondByte)
-
-				// fmt.Printf("next second byte is: 0x%x\n", nextSecondByte[0])
 
 				switch nextSecondByte[0] {
 				case PLAINTEXT_BLOCK:
@@ -124,9 +132,23 @@ func main() {
 					}
 				case GRAPHICS_CONTROL_BLOCK:
 					{
-						file.Seek(GRAPHICS_CONTROL_BLOCK_SIZE+1, os.SEEK_CUR)
+						// skip the length byte
+						file.Seek(1, os.SEEK_CUR)
 
-						// TODO: read graphics control block and do something with it ???
+						// TODO: use the delayTime for something ???
+
+						block := GraphicsControlBlock{}
+						data := make([]byte, GRAPHICS_CONTROL_BLOCK_SIZE)
+
+						file.Read(data)
+
+						binary.Read(bytes.NewBuffer(data), binary.LittleEndian, &block)
+
+						transparencyFlag := block.Packed & 1
+
+						if transparencyFlag == 1 {
+							transparencyIndex = int(block.TransparentColorIndex)
+						}
 
 						break
 					}
@@ -168,27 +190,18 @@ func main() {
 				SortFlag := (imageDescriptor.Packed & 0x20) >> 5
 				LocalColorTableEntries := math.Pow(2, float64((imageDescriptor.Packed&7)+1))
 
-				// fmt.Printf("Local Color Table Flag: %v\n", LocalColorTableFlag)
-				// fmt.Printf("Interlace Flag: %v\n", InterlaceFlag)
-				// fmt.Printf("Sort Flag: %v\n", SortFlag)
-				// fmt.Printf("Local Color Table Entries: %v\n", LocalColorTableEntries)
-
-				fmt.Printf("Left Offset: %v\n", imageDescriptor.Left)
-				fmt.Printf("Top Offset: %v\n", imageDescriptor.Top)
-
-				// TODO: use color tables for correct colors on pixels
-				// TODO: write the image data to PNG
+				// TODO: use offsets when writing image ??
 
 				// local color table comes first
-				var LocalColorTable Palette
+				var localPalette Palette
 				if LocalColorTableFlag == 1 {
 					tempLocalColorTable := make([]byte, int(LocalColorTableEntries*3))
 					file.Read(tempLocalColorTable)
 
-					LocalColorTable = make(Palette, int(LocalColorTableEntries))
-					LocalColorTable.UnmarshalBinary(tempLocalColorTable)
+					localPalette = make(Palette, int(LocalColorTableEntries))
+					localPalette.UnmarshalBinary(tempLocalColorTable)
 
-					// TODO: use local color table
+					currentPalette = localPalette
 				}
 
 				if InterlaceFlag == 1 {
@@ -213,17 +226,14 @@ func main() {
 					panic(err)
 				}
 
-				outFile, err := os.OpenFile(fmt.Sprintf("./%s/%s-raw.%v", dirName, st.Name(), counter), os.O_CREATE|os.O_RDWR, os.FileMode(0755))
-				if err != nil {
-					panic(err)
-				}
-
-				outFile.Write(decompressedFrameData)
+				fileName := fmt.Sprintf("./%s/%s-%v.png", dirName, dirName, counter)
+				WriteToPNG(decompressedFrameData, currentPalette, fileName, imageDescriptor.Width, imageDescriptor.Height, transparencyIndex)
 
 				counter++
 				break
 			}
 		}
+		currentPalette = globalPalette
 
 		// skip the terminator byte
 		file.Seek(1, os.SEEK_CUR)
